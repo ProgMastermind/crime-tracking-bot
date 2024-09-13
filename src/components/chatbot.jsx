@@ -71,9 +71,16 @@ const ChatBot = ({ isOpen, onClose }) => {
     let nextStep = currentStep + 1;
 
     if (steps[currentStep].field === 'hasProof') {
+      if(userInput.toLowerCase() === 'yes'){
+        // console.log("hi")
+        newMessages.push({ text: `Upload Your Image: `, sender: 'bot' });
+
+    
+      }
       if (userInput.toLowerCase() === 'no') {
         nextStep = steps.findIndex(step => step.field === 'traits');
-      } else {
+      } 
+      else {
         newMessages.push({ text: "Please upload your photo or video evidence.", sender: 'bot' });
         setMessages(newMessages);
         return;
@@ -90,6 +97,32 @@ const ChatBot = ({ isOpen, onClose }) => {
       setCurrentStep(nextStep);
     }, 500);
   };
+
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // You could use a form submission or an API call to upload the file.
+      const formData = new FormData();
+      formData.append('file', file);
+  
+      fetch('/upload-endpoint', {
+        method: 'POST',
+        body: formData
+      })
+      .then(response => response.json())
+      .then(data => {
+        setMessages([...messages, { text: "File uploaded successfully", sender: 'bot' }]);
+        // Store file URL or any other relevant info in userData
+        setUserData({ ...userData, proofFileUrl: data.fileUrl });
+      })
+      .catch(error => {
+        console.error('Error uploading file:', error);
+        setMessages([...messages, { text: "Error uploading file. Please try again.", sender: 'bot' }]);
+      });
+    }
+  };
+  
 
   const getLiveLocation = (newMessages, newUserData) => {
     if ("geolocation" in navigator) {
@@ -122,6 +155,12 @@ const ChatBot = ({ isOpen, onClose }) => {
       newMessages.push({ text: "Geolocation is not supported by your browser. Please enter location manually.", sender: 'bot' });
       setMessages([...newMessages, { text: steps[steps.length - 1].question, sender: 'bot' }]);
       setCurrentStep(steps.length - 1);
+    }
+  };
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();  // Prevents the default form submission behavior
+      handleSendMessage();  // Triggers the message sending
     }
   };
 
@@ -169,6 +208,7 @@ const ChatBot = ({ isOpen, onClose }) => {
           value={userInput}
           onChange={(e) => setUserInput(e.target.value)}
           placeholder={error || 'Type your message here...'}
+          onKeyPress={(e) => handleKeyPress(e)}
           className="flex-grow border border-gray-300 p-2 rounded-lg focus:outline-none"
         />
         <button
