@@ -1,7 +1,5 @@
-// ChatBot.js
-
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, MapPin, Camera, AlertTriangle } from 'lucide-react';
+import { X, Send } from 'lucide-react';
 import { validateInput } from '../utils/utils';
 import ChatMessage from './chatmessage';
 
@@ -11,7 +9,9 @@ const ChatBot = ({ isOpen, onClose }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [userData, setUserData] = useState({});
   const [error, setError] = useState('');
+  const [expectingFileUpload, setExpectingFileUpload] = useState(false);
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const steps = [
     { question: "Welcome to the Crime Reporting System. Please state your name:", field: "name", type: "name" },
@@ -20,6 +20,7 @@ const ChatBot = ({ isOpen, onClose }) => {
     { question: "What is your place of residence?", field: "residence", type: "lettersOnly" },
     { question: "Please describe the crime you want to report:", field: "crime", type: "lettersOnly" },
     { question: "Do you have any proof like a photo or video?", field: "hasProof", options: ["Yes", "No"] },
+    { question: "Please upload your photo or video evidence.", field: "proof", type: "file" },
     { question: "Can you mention any traits of the suspect?", field: "traits", type: "lettersOnly" },
     { question: "How would you like to provide the location?", field: "locationType", options: ["Live Location", "Enter Manually"] },
     { question: "Please enter the location:", field: "location", type: "lettersOnly" },
@@ -71,19 +72,10 @@ const ChatBot = ({ isOpen, onClose }) => {
     let nextStep = currentStep + 1;
 
     if (steps[currentStep].field === 'hasProof') {
-      if(userInput.toLowerCase() === 'yes'){
-        // console.log("hi")
-        newMessages.push({ text: `Upload Your Image: `, sender: 'bot' });
-
-    
-      }
       if (userInput.toLowerCase() === 'no') {
         nextStep = steps.findIndex(step => step.field === 'traits');
-      } 
-      else {
-        newMessages.push({ text: "Please upload your photo or video evidence.", sender: 'bot' });
-        setMessages(newMessages);
-        return;
+      } else {
+        setExpectingFileUpload(true);
       }
     } else if (steps[currentStep].field === 'locationType') {
       if (userInput.toLowerCase() === 'live location') {
@@ -95,34 +87,18 @@ const ChatBot = ({ isOpen, onClose }) => {
     setTimeout(() => {
       setMessages([...newMessages, { text: steps[nextStep].question, sender: 'bot' }]);
       setCurrentStep(nextStep);
-    }, 500);
+    }, 50);
   };
 
-
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0];
     if (file) {
-      // You could use a form submission or an API call to upload the file.
-      const formData = new FormData();
-      formData.append('file', file);
-  
-      fetch('/upload-endpoint', {
-        method: 'POST',
-        body: formData
-      })
-      .then(response => response.json())
-      .then(data => {
-        setMessages([...messages, { text: "File uploaded successfully", sender: 'bot' }]);
-        // Store file URL or any other relevant info in userData
-        setUserData({ ...userData, proofFileUrl: data.fileUrl });
-      })
-      .catch(error => {
-        console.error('Error uploading file:', error);
-        setMessages([...messages, { text: "Error uploading file. Please try again.", sender: 'bot' }]);
-      });
+      setMessages([...messages, { text: `Uploaded file: ${file.name}`, sender: 'user' }]);
+      setUserData({ ...userData, proof: file.name });
+      setExpectingFileUpload(false);
+      processNextStep([...messages, { text: `Uploaded file: ${file.name}`, sender: 'user' }], userData);
     }
   };
-  
 
   const getLiveLocation = (newMessages, newUserData) => {
     if ("geolocation" in navigator) {
@@ -157,10 +133,11 @@ const ChatBot = ({ isOpen, onClose }) => {
       setCurrentStep(steps.length - 1);
     }
   };
+
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') {
-      e.preventDefault();  // Prevents the default form submission behavior
-      handleSendMessage();  // Triggers the message sending
+      e.preventDefault();
+      handleSendMessage();
     }
   };
 
@@ -170,6 +147,7 @@ const ChatBot = ({ isOpen, onClose }) => {
     setUserInput('');
     setUserData({});
     setError('');
+    setExpectingFileUpload(false);
   };
 
   return (
@@ -182,7 +160,7 @@ const ChatBot = ({ isOpen, onClose }) => {
       </div>
       <div className="flex-grow overflow-y-auto p-4 bg-gray-100" style={{ maxHeight: 'calc(32rem - 120px)' }}>
         {messages.map((msg, index) => (
-          <ChatMessage key={index} message={msg.text} sender={msg.sender} />
+          <ChatMessage key={index} message={msg.text} sender={msg.sender} handleFileUpload={handleFileUpload} />
         ))}
         {steps[currentStep].options && (
           <div className="flex justify-center space-x-2 my-2">
@@ -203,20 +181,39 @@ const ChatBot = ({ isOpen, onClose }) => {
         <div ref={messagesEndRef} />
       </div>
       <div className="p-4 bg-white border-t border-gray-200 flex items-center">
-        <input
-          type="text"
-          value={userInput}
-          onChange={(e) => setUserInput(e.target.value)}
-          placeholder={error || 'Type your message here...'}
-          onKeyPress={(e) => handleKeyPress(e)}
-          className="flex-grow border border-gray-300 p-2 rounded-lg focus:outline-none"
-        />
-        <button
-          onClick={handleSendMessage}
-          className="ml-2 px-4 py-2 bg-blue-500 text-white rounded-lg shadow hover:bg-blue-600"
-        >
-          <Send size={20} />
-        </button>
+        {expectingFileUpload ? (
+          <>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileUpload}
+              className="flex-grow"
+            />
+            <button
+              onClick={() => fileInputRef.current.click()}
+              className="ml-2 px-4 py-2 bg-blue-500 text-white rounded-lg shadow hover:bg-blue-600"
+            >
+              Upload
+            </button>
+          </>
+        ) : (
+          <>
+            <input
+              type="text"
+              value={userInput}
+              onChange={(e) => setUserInput(e.target.value)}
+              placeholder={error || 'Type your message here...'}
+              onKeyPress={handleKeyPress}
+              className="flex-grow border border-gray-300 p-2 rounded-lg focus:outline-none"
+            />
+            <button
+              onClick={handleSendMessage}
+              className="ml-2 px-4 py-2 bg-blue-500 text-white rounded-lg shadow hover:bg-blue-600"
+            >
+              <Send size={20} />
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
