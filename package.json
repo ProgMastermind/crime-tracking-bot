@@ -11,18 +11,8 @@
   },
   "dependencies": {
     "@heroicons/react": "^2.1.5",
-<<<<<<< HEAD
     "lucide-react": "^0.439.0",
     "openai": "^4.61.1",
-=======
-    "@react-spring/web": "^9.7.5",
-    "@tsparticles/engine": "^3.5.0",
-    "@tsparticles/react": "^3.0.0",
-    "@tsparticles/slim": "^3.5.0",
-    "framer-motion": "^11.11.10",
-    "lucide-react": "^0.439.0",
-    "openai": "^4.61.0",
->>>>>>> fa60e5e (updated ui)
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hot-toast": "^2.4.1"
