@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useNavigate } from 'react-router-dom';
 import {
   XMarkIcon,
   PaperAirplaneIcon,
@@ -7,6 +8,7 @@ import {
   SparklesIcon,
   ShieldCheckIcon,
   MapPinIcon,
+  CheckCircleIcon,
 } from "@heroicons/react/24/solid";
 import { validateInput } from "../utils/utils";
 import { validateCrime } from "../utils/openai";
@@ -24,6 +26,14 @@ const getLocationDetails = async (latitude, longitude) => {
     console.error("Error fetching location details:", error);
     return `${latitude}, ${longitude}`;
   }
+};
+
+// Generate unique complaint ID
+const generateComplaintId = () => {
+  const prefix = "CW";
+  const timestamp = Date.now().toString().slice(-6);
+  const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+  return `${prefix}${timestamp}${random}`;
 };
 
 const ChatMessage = ({ message, sender, isError }) => (
@@ -45,7 +55,28 @@ const ChatMessage = ({ message, sender, isError }) => (
   </motion.div>
 );
 
-const ChatBot = ({ isOpen, onClose }) => {
+const SubmissionAnimation = ({ onComplete }) => {
+  useEffect(() => {
+    const timer = setTimeout(onComplete, 3000);
+    return () => clearTimeout(timer);
+  }, [onComplete]);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+      <motion.div
+        initial={{ scale: 0 }}
+        animate={{ scale: [0, 1.2, 1] }}
+        transition={{ duration: 0.5 }}
+        className="bg-white rounded-full p-8"
+      >
+        <CheckCircleIcon className="w-16 h-16 text-green-500" />
+      </motion.div>
+    </div>
+  );
+};
+
+const ChatBot = ({ isOpen, onClose, onComplaintSubmitted }) => {
+  const navigate = useNavigate();
   const [messages, setMessages] = useState([]);
   const [userInput, setUserInput] = useState("");
   const [currentStep, setCurrentStep] = useState(0);
@@ -57,6 +88,7 @@ const ChatBot = ({ isOpen, onClose }) => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [isValidating, setIsValidating] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showSubmissionAnimation, setShowSubmissionAnimation] = useState(false);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -139,16 +171,10 @@ const ChatBot = ({ isOpen, onClose }) => {
         const { latitude, longitude } = position.coords;
         const locationDetails = await getLocationDetails(latitude, longitude);
         
-        // First, show that we're using live location
         addMessage("Using live location", "user");
-        
-        // Then show the actual location details in a user message
         addMessage(locationDetails, "user");
-        
-        // Add a brief confirmation from the bot
         addMessage("Location received successfully!", "bot");
 
-        // Then proceed with final submission with a slight delay
         setTimeout(() => {
           const newUserData = { ...userData, location: locationDetails };
           handleFinalSubmission(newUserData);
@@ -172,21 +198,17 @@ const ChatBot = ({ isOpen, onClose }) => {
 
     const currentStepData = steps[currentStep];
     
-    // Immediately display user message
     addMessage(input);
     setUserInput("");
 
-    // Validate input format
     if (currentStepData.type && !validateInput(input, currentStepData.type)) {
       addMessage(`Please provide a valid ${currentStepData.field}.`, "bot", true);
       return;
     }
 
-    // Update user data
     const newUserData = { ...userData, [currentStepData.field]: input };
     setUserData(newUserData);
 
-    // Handle crime description validation
     if (currentStepData.field === "crime") {
       setIsValidating(true);
       const isValidCrime = await validateCrime(input);
@@ -204,32 +226,25 @@ const ChatBot = ({ isOpen, onClose }) => {
       return;
     }
 
-    // Handle location type selection
     if (currentStepData.field === "locationType") {
       if (input.toLowerCase() === "live location") {
         setExpectingLocation(true);
         getLiveLocation();
         return;
-      } else {
-        processNextStep(newUserData, input);
       }
-      return;
     }
 
-    // Handle manual location input
     if (currentStepData.field === "location") {
       handleFinalSubmission(newUserData);
       return;
     }
 
-    // Process next step for other fields
     processNextStep(newUserData, input);
   };
 
   const processNextStep = (newUserData, input) => {
     let nextStep = currentStep + 1;
 
-    // Handle evidence upload flow
     if (steps[currentStep].field === "hasProof") {
       if (input.toLowerCase() === "no") {
         nextStep = steps.findIndex((step) => step.field === "traits");
@@ -239,7 +254,6 @@ const ChatBot = ({ isOpen, onClose }) => {
         nextStep = steps.findIndex((step) => step.field === "proof");
       }
     }
-    // Handle file upload completion
     else if (steps[currentStep].field === "proof") {
       nextStep = steps.findIndex((step) => step.field === "traits");
       setExpectingFileUpload(false);
@@ -252,13 +266,34 @@ const ChatBot = ({ isOpen, onClose }) => {
   };
 
   const handleFinalSubmission = (newUserData) => {
+    const complaintId = generateComplaintId();
+    
+    // First, show thank you message
     addMessage(
       "Thank you for your report. Our team will review it and take appropriate action. You'll receive updates via your provided contact information.",
       "bot"
     );
+    
+    // Store complaint data
+    localStorage.setItem(complaintId, JSON.stringify({
+      ...newUserData,
+      timestamp: new Date().toISOString(),
+      status: 'submitted'
+    }));
+  
+    // Show submission animation and handle transition
+    setTimeout(() => {
+      setShowSubmissionAnimation(true);
+      
+      // After animation, close chatbot and redirect
+      setTimeout(() => {
+        onClose(); // Close chatbot
+        navigate(`/complaint-status/${complaintId}`);
+      }, 2000); // Adjust timing as needed
+    }, 3000);
+  
     setChatEnded(true);
     toast.success("Report submitted successfully!");
-    console.log("Final report data:", newUserData);
   };
 
   const handleFileSelect = (event) => {
@@ -282,20 +317,6 @@ const ChatBot = ({ isOpen, onClose }) => {
     }
   };
 
-  const resetChat = () => {
-    setMessages([{ text: steps[0].question, sender: "bot" }]);
-    setCurrentStep(0);
-    setUserInput("");
-    setUserData({});
-    setError("");
-    setExpectingFileUpload(false);
-    setExpectingLocation(false);
-    setChatEnded(false);
-    setSelectedFile(null);
-    setIsProcessing(false);
-    setIsValidating(false);
-  };
-
   return (
     <motion.div
       className="w-full md:w-[400px] h-[600px] bg-white rounded-2xl shadow-2xl flex flex-col relative overflow-hidden"
@@ -303,6 +324,10 @@ const ChatBot = ({ isOpen, onClose }) => {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
     >
+      {showSubmissionAnimation && (
+        <SubmissionAnimation onComplete={() => setShowSubmissionAnimation(false)} />
+      )}
+
       {/* Header */}
       <div className="bg-gradient-to-r from-pink-500 to-purple-600 p-4 flex items-center justify-between">
         <div className="flex items-center space-x-3">
@@ -310,10 +335,7 @@ const ChatBot = ({ isOpen, onClose }) => {
           <h3 className="text-white font-bold text-lg">CrimeWatch Assistant</h3>
         </div>
         <button
-          onClick={() => {
-            onClose();
-            resetChat();
-          }}
+          onClick={onClose}
           className="text-white hover:bg-white/20 p-2 rounded-full transition duration-150"
         >
           <XMarkIcon className="h-6 w-6" />
