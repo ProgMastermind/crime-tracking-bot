@@ -36,10 +36,12 @@ const generateComplaintId = () => {
   return `${prefix}${timestamp}${random}`;
 };
 
+// Chat Message Component with Animation
 const ChatMessage = ({ message, sender, isError }) => (
   <motion.div
     initial={{ opacity: 0, y: 10, scale: 0.95 }}
     animate={{ opacity: 1, y: 0, scale: 1 }}
+    exit={{ opacity: 0, y: -10, scale: 0.95 }}
     transition={{ duration: 0.2 }}
     className={`flex ${sender === "bot" ? "justify-start" : "justify-end"} mb-4`}
   >
@@ -55,6 +57,7 @@ const ChatMessage = ({ message, sender, isError }) => (
   </motion.div>
 );
 
+// Submission Animation Component
 const SubmissionAnimation = ({ onComplete }) => {
   useEffect(() => {
     const timer = setTimeout(onComplete, 3000);
@@ -62,7 +65,12 @@ const SubmissionAnimation = ({ onComplete }) => {
   }, [onComplete]);
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+    >
       <motion.div
         initial={{ scale: 0 }}
         animate={{ scale: [0, 1.2, 1] }}
@@ -71,11 +79,11 @@ const SubmissionAnimation = ({ onComplete }) => {
       >
         <CheckCircleIcon className="w-16 h-16 text-green-500" />
       </motion.div>
-    </div>
+    </motion.div>
   );
 };
 
-const ChatBot = ({ isOpen, onClose, onComplaintSubmitted }) => {
+const ChatBot = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
   const [messages, setMessages] = useState([]);
   const [userInput, setUserInput] = useState("");
@@ -193,6 +201,60 @@ const ChatBot = ({ isOpen, onClose, onComplaintSubmitted }) => {
     }
   };
 
+  const handleFinalSubmission = async (newUserData) => {
+    const complaintId = generateComplaintId();
+    
+    try {
+      const formData = new FormData();
+      
+      Object.keys(newUserData).forEach(key => {
+        if (key === 'proof' && newUserData[key] instanceof File) {
+          formData.append('file', newUserData[key]);
+        } else {
+          formData.append(key, newUserData[key]);
+        }
+      });
+  
+      formData.append('uniqueId', complaintId);
+      formData.append('status', 'pending');
+  
+      const response = await fetch('http://localhost:5000/register', {
+        method: 'POST',
+        body: formData,
+      });
+  
+      if (!response.ok) {
+        throw new Error('Failed to submit report');
+      }
+  
+      const data = await response.json();
+      
+      setShowSubmissionAnimation(true);
+      
+      // After animation, close chatbot and redirect with complaintId only
+      setTimeout(() => {
+        onClose();
+        navigate('/select-view', { 
+          state: { 
+            complaintId: complaintId
+          } 
+        });
+      }, 2000);
+  
+      setChatEnded(true);
+      toast.success("Report submitted successfully!");
+  
+    } catch (error) {
+      console.error('Error submitting report:', error);
+      toast.error("Failed to submit report. Please try again.");
+      addMessage(
+        "There was an error submitting your report. Please try again.",
+        "bot",
+        true
+      );
+    }
+  };
+
   const handleSendMessage = async (input = userInput) => {
     if (input.trim() === "" || chatEnded || isProcessing) return;
 
@@ -265,37 +327,6 @@ const ChatBot = ({ isOpen, onClose, onComplaintSubmitted }) => {
     }, 300);
   };
 
-  const handleFinalSubmission = (newUserData) => {
-    const complaintId = generateComplaintId();
-    
-    // First, show thank you message
-    addMessage(
-      "Thank you for your report. Our team will review it and take appropriate action. You'll receive updates via your provided contact information.",
-      "bot"
-    );
-    
-    // Store complaint data
-    localStorage.setItem(complaintId, JSON.stringify({
-      ...newUserData,
-      timestamp: new Date().toISOString(),
-      status: 'submitted'
-    }));
-  
-    // Show submission animation and handle transition
-    setTimeout(() => {
-      setShowSubmissionAnimation(true);
-      
-      // After animation, close chatbot and redirect
-      setTimeout(() => {
-        onClose(); // Close chatbot
-        navigate(`/complaint-status/${complaintId}`);
-      }, 2000); // Adjust timing as needed
-    }, 3000);
-  
-    setChatEnded(true);
-    toast.success("Report submitted successfully!");
-  };
-
   const handleFileSelect = (event) => {
     const file = event.target.files[0];
     if (file) {
@@ -324,9 +355,11 @@ const ChatBot = ({ isOpen, onClose, onComplaintSubmitted }) => {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
     >
-      {showSubmissionAnimation && (
-        <SubmissionAnimation onComplete={() => setShowSubmissionAnimation(false)} />
-      )}
+      <AnimatePresence>
+        {showSubmissionAnimation && (
+          <SubmissionAnimation onComplete={() => setShowSubmissionAnimation(false)} />
+        )}
+      </AnimatePresence>
 
       {/* Header */}
       <div className="bg-gradient-to-r from-pink-500 to-purple-600 p-4 flex items-center justify-between">
@@ -334,12 +367,14 @@ const ChatBot = ({ isOpen, onClose, onComplaintSubmitted }) => {
           <ShieldCheckIcon className="w-6 h-6 text-white" />
           <h3 className="text-white font-bold text-lg">CrimeWatch Assistant</h3>
         </div>
-        <button
+        <motion.button
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
           onClick={onClose}
           className="text-white hover:bg-white/20 p-2 rounded-full transition duration-150"
         >
           <XMarkIcon className="h-6 w-6" />
-        </button>
+        </motion.button>
       </div>
 
       {/* Chat Messages */}
@@ -347,98 +382,149 @@ const ChatBot = ({ isOpen, onClose, onComplaintSubmitted }) => {
         className="flex-grow overflow-y-auto p-4 bg-gray-50"
         style={{ maxHeight: "calc(100% - 140px)" }}
       >
-        {messages.map((msg, index) => (
-          <ChatMessage
-            key={index}
-            message={msg.text}
-            sender={msg.sender}
-            isError={msg.isError}
-          />
-        ))}
-        {(isValidating || isProcessing) && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex items-center justify-center space-x-2 text-gray-500"
-          >
+        <AnimatePresence mode="popLayout">
+          {messages.map((msg, index) => (
+            <ChatMessage
+              key={`msg-${index}`}
+              message={msg.text}
+              sender={msg.sender}
+              isError={msg.isError}
+            />
+          ))}
+        </AnimatePresence>
+
+        <AnimatePresence mode="wait">
+          {(isValidating || isProcessing) && (
             <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+              key="loading-indicator"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="flex items-center justify-center space-x-2 text-gray-500"
             >
-              {isValidating ? (
-                <SparklesIcon className="w-5 h-5" />
-              ) : (
-                <MapPinIcon className="w-5 h-5" />
-              )}
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+              >
+                {isValidating ? (
+                  <SparklesIcon className="w-5 h-5" />
+                ) : (
+                  <MapPinIcon className="w-5 h-5" />
+                )}
+              </motion.div>
+              <span>{isValidating ? "Analyzing report..." : "Getting location..."}</span>
             </motion.div>
-            <span>{isValidating ? "Analyzing report..." : "Getting location..."}</span>
-          </motion.div>
-        )}
+          )}
+        </AnimatePresence>
         <div ref={messagesEndRef} />
       </div>
 
       {/* Input Area */}
-      {!chatEnded && (
-        <div className="p-4 bg-white border-t border-gray-200">
-          {expectingFileUpload ? (
-            <div className="flex flex-col space-y-2">
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileSelect}
-                className="hidden"
-                accept="image/*,video/*"
-              />
-              <button
-                onClick={() => fileInputRef.current.click()}
-                className="flex items-center justify-center space-x-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200 transition duration-150"
-              >
-                <PaperClipIcon className="w-5 h-5" />
-                <span>{selectedFile ? selectedFile.name : "Choose File"}</span>
-              </button>
-              {selectedFile && (
-                <button
-                  onClick={handleFileUpload}
-                  className="w-full px-4 py-2 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-full hover:opacity-90 transition duration-150"
+      <AnimatePresence mode="wait">
+        {!chatEnded && (
+          <motion.div
+            key="input-area"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="p-4 bg-white border-t border-gray-200"
+          >
+            <AnimatePresence mode="wait">
+              {expectingFileUpload ? (
+                <motion.div
+                  key="file-upload"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="flex flex-col space-y-2"
                 >
-                  Upload Evidence
-                </button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    accept="image/*,video/*"
+                  />
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => fileInputRef.current.click()}
+                    className="flex items-center justify-center space-x-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200 transition duration-150"
+                  >
+                    <PaperClipIcon className="w-5 h-5" />
+                    <span>{selectedFile ? selectedFile.name : "Choose File"}</span>
+                  </motion.button>
+                  {selectedFile && (
+                    <motion.button
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={handleFileUpload}
+                      className="w-full px-4 py-2 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-full hover:opacity-90 transition duration-150"
+                    >
+                      Upload Evidence
+                    </motion.button>
+                  )}
+                </motion.div>
+              ) : steps[currentStep].options ? (
+                <motion.div
+                  key="options"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="flex flex-col space-y-2"
+                >
+                  {steps[currentStep].options.map((option, index) => (
+                    <motion.button
+                      key={option}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ 
+                        opacity: 1, 
+                        y: 0,
+                        transition: { delay: index * 0.1 }
+                      }}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => handleSendMessage(option)}
+                      className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200 transition duration-150"
+                    >
+                      {option}
+                    </motion.button>
+                  ))}
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="text-input"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="flex items-center space-x-2"
+                >
+                  <input
+                    type="text"
+                    value={userInput}
+                    onChange={(e) => setUserInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+                    placeholder="Type your message..."
+                    className="flex-grow px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-pink-500"
+                    disabled={isProcessing || isValidating}
+                  />
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => handleSendMessage()}
+                    disabled={!userInput.trim() || isProcessing || isValidating}
+                    className="p-2 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-full hover:opacity-90 transition duration-150 disabled:opacity-50"
+                  >
+                    <PaperAirplaneIcon className="w-5 h-5" />
+                  </motion.button>
+                </motion.div>
               )}
-            </div>
-          ) : steps[currentStep].options ? (
-            <div className="flex flex-col space-y-2">
-              {steps[currentStep].options.map((option, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleSendMessage(option)}
-                  className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200 transition duration-150"
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="flex items-center space-x-2">
-              <input
-                type="text"
-                value={userInput}
-                onChange={(e) => setUserInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
-                placeholder="Type your message..."
-                className="flex-grow px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-pink-500"
-                disabled={isProcessing || isValidating}
-              />
-              <button
-                onClick={() => handleSendMessage()}
-                disabled={!userInput.trim() || isProcessing || isValidating}
-                className="p-2 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-full hover:opacity-90 transition duration-150 disabled:opacity-50"
-              >
-                <PaperAirplaneIcon className="w-5 h-5" />
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };

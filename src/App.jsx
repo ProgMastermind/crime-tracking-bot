@@ -10,6 +10,8 @@ import HowItWorks from "./components/HowItWorks";
 import Footer from "./components/Footer";
 import ChatBot from "./components/ChatBot";
 import ComplaintStatus from "./components/ComplaintStatus";
+import SelectView from "./components/SelectView";
+import AdminPanel from "./components/AdminPanel";
 
 // Page Transition Component
 const PageTransition = ({ children }) => (
@@ -54,9 +56,10 @@ const MainContent = ({ isChatOpen, handleChatToggle, isPageLoaded, scrollProgres
     </main>
 
     {/* Floating Chat Button */}
-    <AnimatePresence>
+    <AnimatePresence mode="wait">
       {!isChatOpen && (
         <motion.button
+          key="chat-button"
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0, opacity: 0 }}
@@ -138,6 +141,14 @@ const App = () => {
             } 
           />
           <Route 
+            path="/select-view" 
+            element={
+              <PageTransition>
+                <SelectView />
+              </PageTransition>
+            } 
+          />
+          <Route 
             path="/complaint-status/:id" 
             element={
               <PageTransition>
@@ -145,12 +156,21 @@ const App = () => {
               </PageTransition>
             } 
           />
+          <Route 
+            path="/admin-panel" 
+            element={
+              <PageTransition>
+                <AdminPanel />
+              </PageTransition>
+            } 
+          />
         </Routes>
 
         {/* ChatBot */}
-        <AnimatePresence>
+        <AnimatePresence mode="wait">
           {isChatOpen && (
             <motion.div
+              key="chat-overlay"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -158,6 +178,7 @@ const App = () => {
               className="fixed inset-0 z-50 flex items-center justify-center md:items-end md:justify-end md:inset-auto md:right-6 md:bottom-6"
             >
               <motion.div
+                key="chat-backdrop"
                 className="fixed inset-0 bg-black/50 backdrop-blur-sm"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -167,7 +188,7 @@ const App = () => {
               <ChatBot 
                 isOpen={isChatOpen} 
                 onClose={() => handleChatToggle(false)}
-                key={isChatOpen ? 'open' : 'closed'}
+                key="chat-bot"
               />
             </motion.div>
           )}
